@@ -20,7 +20,7 @@ The service provides seven shared queries:
 4. **`get_nearest_rain(lat, lon, radius_km, zoom=10, lead_minutes=0)`**: Find the closest rain within `radius_km`, including distance and the compass bearing of its position relative to the query point; this bearing does not indicate rain movement.
 5. **`get_route_nowcast(points=[{lat, lon, time}], zoom=10)`**: Evaluate weather along a timed route.
 6. **`get_rain_free_windows(lat, lon, zoom=10)`**: Identify continuous dry time windows in the 60-minute nowcast.
-7. **`get_short_range(lat, lon, zoom=10)`**: Get the hourly +1 h…+15 h forecast. Values are one-hour accumulations in **mm**, not mm/h; the `immed` and `none` series have independent basetimes. JMA may omit the leading `none` frame(s) whose end times are already covered by the latest `immed` series, so `none` can begin after +7 h.
+7. **`get_short_range(lat, lon, zoom=10)`**: Get the hourly +1 h…+15 h forecast. Values are one-hour accumulations in **mm**, not mm/h; use each series' `basetime` and `member`. JMA can publish both series under member `none` or omit leading extended frames covered by the +1 h…+6 h series.
 
 All queries return source attribution, a processed flag, processing notes, and
 the PDL-1.0 licence. Nowcast precipitation classes use JMA levels 0–9; level 0

@@ -3,17 +3,17 @@
 Run with python3 -m unittest discover -s tests -p acceptance.py after cargo build.
 """
 
-from contextlib import contextmanager
-from datetime import timedelta
-from http.client import HTTPConnection
 import json
 import math
 import os
-from pathlib import Path
 import socket
 import subprocess
 import time
 import unittest
+from contextlib import contextmanager
+from datetime import timedelta
+from http.client import HTTPConnection
+from pathlib import Path
 
 from mock_jma import (
     BASE,
@@ -42,6 +42,7 @@ def environment(fixture):
 def run(fixture, *args, stdin=None):
     return subprocess.run(
         [BINARY, *args],
+        check=False,
         env=environment(fixture),
         input=stdin,
         text=True,
@@ -461,6 +462,28 @@ class Acceptance(unittest.TestCase):
             self.assertEqual(
                 {path: hits for path, hits in fixture.hits.items() if path.endswith(".png")},
                 previous_tile_hits,
+            )
+
+    def test_short_range_none_member_can_supply_both_series(self):
+        with mock_jma() as fixture:
+            fixture.rasrf_times = [
+                dict(entry(BASE, hour * 60, ["rasrf"]), member="none") for hour in range(15, 0, -1)
+            ]
+            expected_paths = {short_range_path("none", BASE, hour) for hour in range(1, 16)}
+            fixture.tiles.update({path: png_tile() for path in expected_paths})
+            result = self.cli(fixture, "short-range")
+            for group, count in [("immed", 6), ("none", 9)]:
+                series = result[group]
+                self.assertEqual(series["member"], "none")
+                self.assertEqual(series["basetime"], iso(BASE))
+                self.assertEqual(len(series["samples"]), count)
+            self.assertEqual(
+                {
+                    path
+                    for path, hits in fixture.hits.items()
+                    if path.endswith(".png") and hits == 1
+                },
+                expected_paths,
             )
 
     def test_short_range_missing_stale_and_404_are_structured_errors(self):

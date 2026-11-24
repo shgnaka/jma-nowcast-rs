@@ -208,14 +208,37 @@ pub async fn get_short_range(
     let entries: Vec<TargetTimeEntry> = serde_json::from_slice(&body)
         .map_err(|error| ShortRangeError::UpstreamData(format!("targetTimes.json: {error}")))?;
 
-    let immed_selection = select_series(
+    let immed_selection = match select_series(
         &entries,
         IMMED_MEMBER,
         1..=6,
         IMMED_MAX_AGE_MINUTES,
         now,
         None,
-    )?;
+    ) {
+        Ok(selection) => selection,
+        Err(error)
+            if matches!(
+                error,
+                ShortRangeError::MissingTimes(_) | ShortRangeError::StaleData(_)
+            ) =>
+        {
+            let original_error = error;
+            match select_series(
+                &entries,
+                EXTENDED_MEMBER,
+                1..=6,
+                IMMED_MAX_AGE_MINUTES,
+                now,
+                None,
+            ) {
+                Ok(selection) => selection,
+                Err(ShortRangeError::MissingTimes(_)) => return Err(original_error),
+                Err(other) => return Err(other),
+            }
+        }
+        Err(error) => return Err(error),
+    };
     let none_cutoff = immed_selection
         .validtimes
         .last()

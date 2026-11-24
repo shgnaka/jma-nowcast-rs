@@ -1,14 +1,14 @@
 """Deterministic JMA HTTP fixture for black-box acceptance tests."""
 
+import json
+import struct
+import zlib
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import json
-import struct
 from threading import Thread
-import zlib
 
 BASE = datetime(2026, 9, 16, 1, 5, tzinfo=timezone.utc)
 FIXED_NOW = "2026-09-16T01:11:00Z"

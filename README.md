@@ -20,7 +20,9 @@ query engine.
   - `rain-free-windows`: continuous dry intervals within the 60-minute horizon.
   - `short-range`: hourly +1 h…+15 h accumulation forecast in millimetres, with
     independent `immed` and `none` basetimes. JMA may omit the leading `none`
-    frames whose end times are already covered by the latest `immed` series.
+    frames whose end times are already covered by the selected +1 h…+6 h
+    series. When the `immed` feed is unavailable, the `immed` response object
+    contains the +1 h…+6 h series from `none`, with `member` set to `none`.
 - **Multiple interfaces**: CLI, REST API (axum), and stdio MCP server.
 - **Deterministic testing**: every interface honours `JMA_BASE_URL`,
   `JMA_SHORT_RANGE_BASE_URL`, and `JMA_FIXED_NOW`.
