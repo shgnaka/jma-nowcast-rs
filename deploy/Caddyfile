@@ -1,0 +1,15 @@
+{
+	servers {
+		timeouts {
+			read_header 5s
+			read_body 15s
+		}
+	}
+	log default {
+		exclude http.log.access http.log.error
+	}
+}
+
+weather.hisho.uk {
+	reverse_proxy 127.0.0.1:8082
+}

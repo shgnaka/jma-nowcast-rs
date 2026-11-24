@@ -1,0 +1,17 @@
+# Rust build artefacts
+/target/
+**/*.rs.bk
+
+# Editor / OS files
+.DS_Store
+.idea/
+.vscode/
+
+# Python acceptance test caches
+__pycache__/
+*.py[cod]
+
+# Local deployment configuration
+.env
+.env.*
+!.env.example

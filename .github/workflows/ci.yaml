@@ -1,0 +1,41 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: rustup toolchain install 1.100 --profile minimal --component rustfmt
+      - run: cargo +1.100 fmt --all --check
+      - run: cargo +1.100 test --locked
+      - run: cargo +1.100 build --locked
+      - run: python3 -m unittest discover -s tests -p acceptance.py
+
+  container:
+    runs-on: ubuntu-latest
+    env:
+      JMA_API_KEY: ci-only-api-key
+      JMA_FIXED_NOW: "2026-09-16T01:05:00Z"
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker compose up --build --wait --wait-timeout 90
+      - name: Verify runtime and production configuration
+        run: |
+          docker compose exec -T nowcast sh -ec '
+            test "$(id -u)" = 10001
+            test -z "${JMA_FIXED_NOW+x}"
+          '
+          test "$(docker compose port nowcast 8082)" = 127.0.0.1:8082
+          curl --fail --silent --show-error http://127.0.0.1:8082/health
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --json '{}' http://127.0.0.1:8082/v1/nowcast)" = 401
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $JMA_API_KEY" \
+            --json '{}' http://127.0.0.1:8082/v1/nowcast)" = 400
+      - if: always()
+        run: docker compose down
