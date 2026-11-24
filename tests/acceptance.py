@@ -109,6 +109,110 @@ def post(port, route, body, token=None):
         connection.close()
 
 
+def mcp_http(port, method="tools/list", params=None, token="mcp-key", verb="POST", extra=None, request_id=1):
+    connection = HTTPConnection("127.0.0.1", port, timeout=15)
+    try:
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                   "MCP-Protocol-Version": "2025-11-25"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        headers.update(extra or {})
+        body = {"jsonrpc": "2.0", "method": method}
+        if request_id is not None:
+            body["id"] = request_id
+        if params is not None:
+            body["params"] = params
+        connection.request(verb, "/mcp", json.dumps(body) if verb == "POST" else None, headers)
+        response = connection.getresponse()
+        data = response.read()
+        return response.status, json.loads(data) if data and response.getheader("Content-Type", "").startswith("application/json") else data.decode()
+    finally:
+        connection.close()
+
+
+class StreamableHttpAcceptance(unittest.TestCase):
+    def test_shared_tools_and_independent_auth(self):
+        with mock_jma() as fixture, rest_server(fixture, JMA_API_KEY="rest-key", JMA_MCP_API_KEY="mcp-key") as port:
+            self.assertEqual(mcp_http(port, token="rest-key")[0], 401)
+            self.assertEqual(post(port, "precipitation", {}, "mcp-key")[0], 401)
+            status, initialized = mcp_http(port, "initialize", {
+                "protocolVersion": "2025-11-25", "capabilities": {},
+                "clientInfo": {"name": "acceptance", "version": "1"}})
+            self.assertEqual(status, 200)
+            self.assertEqual(initialized["result"]["protocolVersion"], "2025-11-25")
+            self.assertEqual(mcp_http(port, "notifications/initialized", request_id=None)[0], 202)
+            self.assertEqual(mcp_http(port, "ping")[1]["result"], {})
+
+            status, listed = mcp_http(port)
+            self.assertEqual(status, 200)
+            stdio = run(fixture, "mcp", stdin=json.dumps({"jsonrpc":"2.0", "id":1, "method":"tools/list"}) + "\n")
+            self.assertEqual(listed["result"]["tools"], json.loads(stdio.stdout)["result"]["tools"])
+            self.assertEqual(len(listed["result"]["tools"]), 7)
+            lat, lon = map(float, center(128, 128))
+            arguments = {
+                "lat":lat, "lon":lon, "south":lat, "north":lat + 0.0001,
+                "west":lon, "east":lon + 0.0001, "radius_km":0.01,
+                "points":[{"lat":lat,"lon":lon,"time":FIXED_NOW}],
+            }
+            for tool in listed["result"]["tools"]:
+                params = {"name":tool["name"], "arguments":arguments}
+                status, result = mcp_http(port, "tools/call", params)
+                self.assertEqual(status, 200)
+                self.assertFalse(result["result"]["isError"], result)
+                stdio = run(fixture, "mcp", stdin=json.dumps({
+                    "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":params}) + "\n")
+                self.assertEqual(result["result"], json.loads(stdio.stdout)["result"])
+            self.assertEqual(mcp_http(port, extra={"Origin":"https://evil.example"})[0], 403)
+            self.assertEqual(mcp_http(port, verb="GET")[0], 405)
+            self.assertEqual(mcp_http(port, verb="DELETE")[0], 405)
+            self.assertEqual(mcp_http(port, extra={"Accept":"application/json"})[0], 406)
+            self.assertEqual(mcp_http(port, extra={"Content-Type":"text/plain"})[0], 415)
+
+            self.assertEqual(mcp_http(port, extra={"MCP-Protocol-Version":"invalid"})[0], 400)
+            self.assertEqual(mcp_http(port, extra={"Host":"evil.example"})[0], 403)
+            self.assertEqual(mcp_http(port, "unknown/method")[1]["error"]["code"], -32601)
+
+
+    def test_invalid_mcp_auth_configuration(self):
+        with mock_jma() as fixture:
+            for settings in [
+                {"JMA_MCP_API_KEY":"has spaces"},
+                {"JMA_MCP_ALLOW_ANONYMOUS":"yes"},
+                {"JMA_MCP_API_KEY":"key", "JMA_MCP_ALLOW_ANONYMOUS":"true"},
+            ]:
+                result = subprocess.run(
+                    [BINARY, "serve", "--bind", "127.0.0.1:0"],
+                    env=dict(environment(fixture), **settings), capture_output=True,
+                    text=True, timeout=5,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("JMA_MCP", result.stderr)
+
+    def test_mcp_concurrency_rejects_and_releases(self):
+        entered, release = Event(), Event()
+        with mock_jma() as fixture, rest_server(
+            fixture, JMA_MCP_API_KEY="mcp-key", JMA_MAX_CONCURRENT_REQUESTS="1"
+        ) as port, ThreadPoolExecutor(max_workers=1) as pool:
+            fixture.gates["/targetTimes_N1.json"] = (entered, release)
+            pending = pool.submit(mcp_http, port, "tools/call", {
+                "name":"get_precipitation", "arguments":{"lat":35,"lon":135}})
+            try:
+                self.assertTrue(entered.wait(5))
+                self.assertEqual(mcp_http(port)[0], 429)
+                self.assertEqual(post(port, "precipitation", {"lat":35,"lon":135})[0], 429)
+            finally:
+                release.set()
+            self.assertEqual(pending.result()[0], 200)
+            self.assertEqual(mcp_http(port)[0], 200)
+
+    def test_opt_in_and_shared_rate(self):
+        with mock_jma() as fixture, rest_server(fixture) as port:
+            self.assertEqual(mcp_http(port, token=None)[0], 404)
+        with mock_jma() as fixture, rest_server(fixture, JMA_MCP_ALLOW_ANONYMOUS="true", JMA_RATE_LIMIT_PER_MINUTE="1") as port:
+            self.assertEqual(mcp_http(port, token=None)[0], 200)
+            self.assertEqual(post(port, "precipitation", {"lat":35,"lon":135})[0], 429)
+
+
 class Acceptance(unittest.TestCase):
     def test_rest_auth_rate_and_health(self):
         with mock_jma() as fixture, rest_server(

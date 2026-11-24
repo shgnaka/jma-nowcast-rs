@@ -187,117 +187,7 @@ pub async fn run_mcp_server(
             "tools/list" => Some(JsonRpcResponse {
                 jsonrpc: "2.0",
                 id: req_id,
-                result: Some(json!({
-                    "tools": [
-                        {
-                            "name": "get_precipitation",
-                            "description": "Get current observed precipitation at a specific latitude/longitude.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
-                                    "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
-                                },
-                                "required": ["lat", "lon"]
-                            }
-                        },
-                        {
-                            "name": "get_nowcast",
-                            "description": "Get precipitation nowcast forecast samples (0 to 60 mins) at a specific latitude/longitude.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
-                                    "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
-                                },
-                                "required": ["lat", "lon"]
-                            }
-                        },
-                        {
-                            "name": "get_area_nowcast",
-                            "description": "Get precipitation histogram/counts over a bounding box area for a specified lead time.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "south": { "type": "number", "description": "Southern latitude bound" },
-                                    "west": { "type": "number", "description": "Western longitude bound" },
-                                    "north": { "type": "number", "description": "Northern latitude bound" },
-                                    "east": { "type": "number", "description": "Eastern longitude bound" },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." },
-                                    "lead_minutes": { "type": "integer", "description": "Lead time in minutes (0, 5, 10, ..., 60). Default is 0." }
-                                },
-                                "required": ["south", "west", "north", "east"]
-                            }
-                        },
-                        {
-                            "name": "get_nearest_rain",
-                            "description": "Find the nearest raining pixel within a given search radius (km) from a point.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
-                                    "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
-                                    "radius_km": { "type": "number", "description": "Search radius in kilometers" },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." },
-                                    "lead_minutes": { "type": "integer", "description": "Lead time in minutes (0, 5, 10, ..., 60). Default is 0." }
-                                },
-                                "required": ["lat", "lon", "radius_km"]
-                            }
-                        },
-                        {
-                            "name": "get_route_nowcast",
-                            "description": "Evaluate precipitation along a route of time-stamped waypoints.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "points": {
-                                        "type": "array",
-                                        "description": "List of waypoints along the route",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "lat": { "type": "number", "description": "Latitude" },
-                                                "lon": { "type": "number", "description": "Longitude" },
-                                                "time": { "type": "string", "format": "date-time", "description": "ISO 8601 / RFC 3339 timestamp" }
-                                            },
-                                            "required": ["lat", "lon", "time"]
-                                        }
-                                    },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
-                                },
-                                "required": ["points"]
-                            }
-                        },
-                        {
-                            "name": "get_rain_free_windows",
-                            "description": "Find consecutive dry 5-minute intervals without rain at a given point within the 60-minute forecast.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
-                                    "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
-                                },
-                                "required": ["lat", "lon"]
-                            }
-                        },
-                        {
-                            "name": "get_short_range",
-                            "description": "Get hourly short-range precipitation forecast (R10) combining +1~+6h and +7~+15h series.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
-                                    "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
-                                    "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
-                                },
-                                "required": ["lat", "lon"]
-                            }
-                        }
-                    ]
-                })),
+                result: Some(tool_definitions()),
                 error: None,
             }),
             "tools/call" => {
@@ -305,46 +195,23 @@ pub async fn run_mcp_server(
                 let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let arguments = params.get("arguments").cloned().unwrap_or(Value::Null);
 
-                match call_tool(
-                    &nowcast,
-                    &http_client,
-                    &short_range_base_url,
-                    tool_name,
-                    arguments,
-                )
-                .await
-                {
-                    Ok(val) => Some(JsonRpcResponse {
-                        jsonrpc: "2.0",
-                        id: req_id,
-                        result: Some(json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": serde_json::to_string_pretty(&val).unwrap_or_else(|_| val.to_string())
-                                }
-                            ],
-                            "structuredContent": val,
-                            "isError": false
-                        })),
-                        error: None,
-                    }),
-                    Err(err) => Some(JsonRpcResponse {
-                        jsonrpc: "2.0",
-                        id: req_id,
-                        result: Some(json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": format!("Error: {}", err)
-                                }
-                            ],
-                            "isError": true
-                        })),
-                        error: None,
-                    }),
-                }
+                Some(JsonRpcResponse {
+                    jsonrpc: "2.0",
+                    id: req_id,
+                    result: Some(
+                        execute_tool(
+                            &nowcast,
+                            &http_client,
+                            &short_range_base_url,
+                            tool_name,
+                            arguments,
+                        )
+                        .await,
+                    ),
+                    error: None,
+                })
             }
+
             _ => Some(JsonRpcResponse {
                 jsonrpc: "2.0",
                 id: req_id,
@@ -447,5 +314,143 @@ async fn call_tool(
             serde_json::to_value(res).map_err(|e| e.to_string())
         }
         _ => Err(format!("Unknown tool: {}", name)),
+    }
+}
+
+pub(crate) fn tool_definitions() -> Value {
+    json!({
+        "tools": [
+            {
+                "name": "get_precipitation",
+                "description": "Get current observed precipitation at a specific latitude/longitude.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
+                        "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
+                    },
+                    "required": ["lat", "lon"]
+                }
+            },
+            {
+                "name": "get_nowcast",
+                "description": "Get precipitation nowcast forecast samples (0 to 60 mins) at a specific latitude/longitude.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
+                        "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
+                    },
+                    "required": ["lat", "lon"]
+                }
+            },
+            {
+                "name": "get_area_nowcast",
+                "description": "Get precipitation histogram/counts over a bounding box area for a specified lead time.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "south": { "type": "number", "description": "Southern latitude bound" },
+                        "west": { "type": "number", "description": "Western longitude bound" },
+                        "north": { "type": "number", "description": "Northern latitude bound" },
+                        "east": { "type": "number", "description": "Eastern longitude bound" },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." },
+                        "lead_minutes": { "type": "integer", "description": "Lead time in minutes (0, 5, 10, ..., 60). Default is 0." }
+                    },
+                    "required": ["south", "west", "north", "east"]
+                }
+            },
+            {
+                "name": "get_nearest_rain",
+                "description": "Find the nearest raining pixel within a given search radius (km) from a point.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
+                        "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
+                        "radius_km": { "type": "number", "description": "Search radius in kilometers" },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." },
+                        "lead_minutes": { "type": "integer", "description": "Lead time in minutes (0, 5, 10, ..., 60). Default is 0." }
+                    },
+                    "required": ["lat", "lon", "radius_km"]
+                }
+            },
+            {
+                "name": "get_route_nowcast",
+                "description": "Evaluate precipitation along a route of time-stamped waypoints.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "points": {
+                            "type": "array",
+                            "description": "List of waypoints along the route",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "lat": { "type": "number", "description": "Latitude" },
+                                    "lon": { "type": "number", "description": "Longitude" },
+                                    "time": { "type": "string", "format": "date-time", "description": "ISO 8601 / RFC 3339 timestamp" }
+                                },
+                                "required": ["lat", "lon", "time"]
+                            }
+                        },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
+                    },
+                    "required": ["points"]
+                }
+            },
+            {
+                "name": "get_rain_free_windows",
+                "description": "Find consecutive dry 5-minute intervals without rain at a given point within the 60-minute forecast.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
+                        "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
+                    },
+                    "required": ["lat", "lon"]
+                }
+            },
+            {
+                "name": "get_short_range",
+                "description": "Get hourly short-range precipitation forecast (R10) combining +1~+6h and +7~+15h series.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "lat": { "type": "number", "description": "Latitude (-85.05 to 85.05)" },
+                        "lon": { "type": "number", "description": "Longitude (-180.0 to 180.0)" },
+                        "zoom": { "type": "integer", "description": "Web Mercator zoom level (4, 6, 8, 10). Default is 10." }
+                    },
+                    "required": ["lat", "lon"]
+                }
+            }
+        ]
+    })
+}
+
+/// Shared tool result envelope for stdio and HTTP transports.
+pub(crate) async fn execute_tool(
+    nowcast: &Nowcast,
+    http_client: &Client,
+    short_range_base_url: &str,
+    name: &str,
+    args: Value,
+) -> Value {
+    match call_tool(nowcast, http_client, short_range_base_url, name, args).await {
+        Ok(value) => json!({
+            "content": [{
+                "type": "text",
+                "text": serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string())
+            }],
+            "structuredContent": value,
+            "isError": false
+        }),
+        Err(error) => json!({
+            "content": [{"type": "text", "text": format!("Error: {error}")}],
+            "isError": true
+        }),
     }
 }

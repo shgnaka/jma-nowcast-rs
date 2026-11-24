@@ -3,6 +3,7 @@
 mod api;
 mod api_policy;
 mod mcp;
+mod mcp_http;
 
 use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
@@ -262,7 +263,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Serve(args) => {
             let policy = api_policy::ApiPolicy::from_env(production)?;
-            let router = api::app(nowcast, http_client, short_range_base_url, policy);
+            let mcp_policy = api_policy::ApiPolicy::mcp_from_env(&policy)?;
+            let mcp_state = api::AppState {
+                nowcast: nowcast.clone(),
+                http_client: http_client.clone(),
+                short_range_base_url: short_range_base_url.clone(),
+            };
+            let mut router = api::app(nowcast, http_client, short_range_base_url, policy);
+            if let Some(policy) = mcp_policy {
+                router = router.merge(mcp_http::router(mcp_state, policy));
+            }
             let addr: SocketAddr = args.bind.parse()?;
             println!("Listening on http://{}", addr);
             let listener = tokio::net::TcpListener::bind(addr).await?;
