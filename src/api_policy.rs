@@ -19,8 +19,8 @@ use crate::api::ApiError;
 
 pub struct ApiPolicy {
     api_key: Option<String>,
-    rate: Option<RateLimit>,
-    concurrency: Option<Semaphore>,
+    rate: Option<Arc<RateLimit>>,
+    concurrency: Option<Arc<Semaphore>>,
 }
 
 const RATE_WINDOW: Duration = Duration::from_secs(60);
@@ -90,12 +90,40 @@ impl ApiPolicy {
 
         Ok(Arc::new(Self {
             api_key,
-            rate: rate.map(|value| RateLimit {
-                maximum: value.get(),
-                window: Mutex::new((Instant::now(), 0)),
+            rate: rate.map(|value| {
+                Arc::new(RateLimit {
+                    maximum: value.get(),
+                    window: Mutex::new((Instant::now(), 0)),
+                })
             }),
-            concurrency: concurrency.map(|value| Semaphore::new(value.get())),
+            concurrency: concurrency.map(|value| Arc::new(Semaphore::new(value.get()))),
         }))
+    }
+
+    pub fn mcp_from_env(rest: &Arc<Self>) -> Result<Option<Arc<Self>>, String> {
+        let key = setting("JMA_MCP_API_KEY")?.filter(|key| !key.is_empty());
+        let anonymous = match setting("JMA_MCP_ALLOW_ANONYMOUS")?.as_deref() {
+            None | Some("false") => false,
+            Some("true") => true,
+            _ => return Err("JMA_MCP_ALLOW_ANONYMOUS must be true or false".into()),
+        };
+        if key.is_none() && !anonymous {
+            return Ok(None);
+        }
+        if key
+            .as_ref()
+            .is_some_and(|key| key.is_empty() || !key.bytes().all(|b| b.is_ascii_graphic()))
+        {
+            return Err("Invalid JMA_MCP_API_KEY".into());
+        }
+        if key.is_some() && anonymous {
+            return Err("Set either JMA_MCP_API_KEY or JMA_MCP_ALLOW_ANONYMOUS".into());
+        }
+        Ok(Some(Arc::new(Self {
+            api_key: key,
+            rate: rest.rate.clone(),
+            concurrency: rest.concurrency.clone(),
+        })))
     }
 
     fn authorized(&self, request: &Request) -> bool {

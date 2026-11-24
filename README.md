@@ -177,3 +177,13 @@ Caddy HTTPS setup for `weather.hisho.uk`.
 Data provided by the Japan Meteorological Agency (気象庁), processed and
 distributed under the Government of Japan Standard Terms of Use (PDL-1.0).
 Source code is licensed under the MIT License.
+
+## Remote MCP over HTTP
+
+The existing `serve` command optionally exposes `/mcp` using the official Rust
+MCP SDK (`rmcp`). Set `JMA_MCP_API_KEY` to enable independent bearer authentication,
+or explicitly set `JMA_MCP_ALLOW_ANONYMOUS=true` for anonymous access. With neither,
+the endpoint is disabled. REST credentials remain configured by `JMA_API_KEY`.
+REST and MCP share the configured rate and concurrency limits. All seven tool
+schemas and query implementations are shared with stdio. See
+[the deployment guide](deploy/README.md) for protocol and client configuration.

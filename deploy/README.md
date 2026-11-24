@@ -55,3 +55,51 @@ sed -n 's/^JMA_API_KEY=/Authorization: Bearer /p' .env |
 認証情報が無効な場合は HTTP 401 を返します。リクエスト上限は 1 プロセスあたり 60 秒の固定窓で 60 件、同時実行上限は 4 件です。上限に達するとキューに入れず HTTP 429 と `Retry-After` を返します。アクセス元やエンドポイント別の枠はなく、全 API クライアントで上限を共有します。認証に失敗したリクエストと同時実行上限で拒否されたリクエストは件数に含めません。`.env` の `JMA_RATE_LIMIT_PER_MINUTE` と `JMA_MAX_CONCURRENT_REQUESTS` で正の整数を設定できます。
 
 更新対象のリビジョンに切り替えた後、または `.env` でキーや上限を変更した後は、`docker compose up -d --build --wait` を再実行します。`docker compose ps` と HTTPS 側の `/health` で確認してください。
+
+## Remote MCP（Streamable HTTP）
+
+`serve` は REST と同じポートの `/mcp` に Streamable HTTP を提供できます。
+公式 Rust SDK `rmcp` を使用し、stdio と同じ7ツールの定義と処理を呼び出します。
+POST の JSON または SSE 応答に対応するステートレス構成です。セッションIDは
+発行せず、待受用 GET とセッション削除用 DELETE は HTTP 405 になります。
+従来の stdio コマンド `jma-nowcast-rs mcp` も引き続き使用できます。
+
+既定では `/mcp` は無効（404）です。`.env` の `JMA_MCP_API_KEY` に
+`openssl rand -hex 32` で作成した専用キーを設定してください。
+REST の `JMA_API_KEY` と独立して認証します。認証なしで公開する場合は
+`JMA_MCP_API_KEY` を空にし、`JMA_MCP_ALLOW_ANONYMOUS=true` を明示します。
+両方を同時に有効にすると起動エラーになります。
+レート制限と同時実行数の枠は REST と MCP の全リクエストで共有します。
+`/health` は引き続き認証と制限の対象外です。
+
+変更後、次を実行します。
+
+```sh
+docker compose config --quiet
+docker compose up -d --build --wait
+```
+
+このVPSの既存 Caddy コンテナで `weather.hisho.uk` 全体を
+`jma-weather-api:8082` に転送している場合、その転送で `/mcp` にも到達します。
+Compose の既存 `compose.override.yaml` にある外部ネットワーク接続を維持してください。
+ホスト上の Caddy を使う場合は、このリポジトリの `deploy/Caddyfile` を使用できます。
+SDK は Host と、指定された場合の Origin を検証します。現在の公開ホストは
+`weather.hisho.uk`、許可するブラウザ Origin は `https://weather.hisho.uk` です。
+別ドメインへ移す際は `src/mcp_http.rs` の許可リストも更新します。
+
+VPS のリポジトリルートで初期化を確認します。
+
+```sh
+sed -n 's/^JMA_MCP_API_KEY=/Authorization: Bearer /p' .env |
+  curl -fsS https://weather.hisho.uk/mcp \
+    --header @- \
+    --header 'Content-Type: application/json' \
+    --header 'Accept: application/json, text/event-stream' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"deployment-check","version":"1"}}}'
+```
+
+続いて `notifications/initialized` をIDなしで POST し、`tools/list`、
+`tools/call` を実行します。初期化後のリクエストには交渉したバージョンの
+`MCP-Protocol-Version` ヘッダーを付けます。Remote MCP クライアントでは
+URL を `https://weather.hisho.uk/mcp`、認証ヘッダーを
+`Authorization: Bearer <JMA_MCP_API_KEY>` に設定します。

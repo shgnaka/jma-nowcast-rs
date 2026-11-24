@@ -4,6 +4,8 @@ services:
     restart: unless-stopped
     init: true
     environment:
+      JMA_MCP_API_KEY: ${JMA_MCP_API_KEY:-}
+      JMA_MCP_ALLOW_ANONYMOUS: ${JMA_MCP_ALLOW_ANONYMOUS:-false}
       JMA_PRODUCTION: "1"
       JMA_API_KEY: ${JMA_API_KEY:?Set JMA_API_KEY in .env}
       JMA_RATE_LIMIT_PER_MINUTE: ${JMA_RATE_LIMIT_PER_MINUTE:-60}
