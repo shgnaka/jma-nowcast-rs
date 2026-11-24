@@ -6,3 +6,7 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Python acceptance test caches
+__pycache__/
+*.py[cod]
