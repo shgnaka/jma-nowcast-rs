@@ -165,6 +165,9 @@ class StreamableHttpAcceptance(unittest.TestCase):
             self.assertEqual(mcp_http(port, extra={"Origin":"https://evil.example"})[0], 403)
             self.assertEqual(mcp_http(port, verb="GET")[0], 405)
             self.assertEqual(mcp_http(port, verb="DELETE")[0], 405)
+            self.assertEqual(mcp_http(port, extra={"Accept":"application/json"})[0], 406)
+            self.assertEqual(mcp_http(port, extra={"Content-Type":"text/plain"})[0], 415)
+
             self.assertEqual(mcp_http(port, extra={"MCP-Protocol-Version":"invalid"})[0], 400)
             self.assertEqual(mcp_http(port, extra={"Host":"evil.example"})[0], 403)
             self.assertEqual(mcp_http(port, "unknown/method")[1]["error"]["code"], -32601)
