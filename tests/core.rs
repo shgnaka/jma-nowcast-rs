@@ -79,7 +79,7 @@ fn packed_tile(width: u32, first_byte: u8) -> Vec<u8> {
             255, 255, 255, 255, 255, 255, 180, 0, 104, 242, 242, 255, 1, 2, 3,
         ]);
         encoder.set_trns(vec![0, 0, 255, 255, 255]);
-        let mut pixels = vec![0x01; ((width + 1) / 2) as usize * 256];
+        let mut pixels = vec![0x01; width.div_ceil(2) as usize * 256];
         pixels[0] = first_byte;
         encoder
             .write_header()

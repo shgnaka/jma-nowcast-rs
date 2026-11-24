@@ -2,14 +2,16 @@
 name = "jma-nowcast-rs"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.70"
 description = "Rust core for JMA high-resolution precipitation nowcast tiles"
 license = "MIT"
 repository = "https://github.com/shgnaka/jma-nowcast-rs"
 
 [dependencies]
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
 png = "0.17"
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
 serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["full"] }

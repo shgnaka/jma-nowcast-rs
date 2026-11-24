@@ -42,6 +42,5 @@ SOFTWARE.
 
 The crate uses the following Rust crates, each under its own upstream license:
 
-- `png` — MIT OR Apache-2.0
-- `serde` — MIT OR Apache-2.0
-- `serde_json` (development only) — MIT OR Apache-2.0
+- `axum` and `tokio` use MIT.
+- `chrono`, `clap`, `png`, `reqwest`, `serde`, and `serde_json` use MIT OR Apache-2.0.
