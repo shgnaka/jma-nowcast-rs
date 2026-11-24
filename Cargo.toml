@@ -1,0 +1,15 @@
+[package]
+name = "jma-nowcast-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Rust core for JMA high-resolution precipitation nowcast tiles"
+license = "MIT"
+repository = "https://github.com/shgnaka/jma-nowcast-rs"
+
+[dependencies]
+png = "0.17"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

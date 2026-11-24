@@ -1,0 +1,8 @@
+# Rust build artefacts
+/target/
+**/*.rs.bk
+
+# Editor / OS files
+.DS_Store
+.idea/
+.vscode/
