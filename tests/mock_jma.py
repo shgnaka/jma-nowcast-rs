@@ -101,6 +101,7 @@ class Fixture:
         self.errors = {}
         self.truncate_once = set()
         self.hits = Counter()
+        self.gates = {}
         self.url = ""
 
 
@@ -112,6 +113,12 @@ def mock_jma():
         def do_GET(self):
             path = self.path.split("?", 1)[0]
             fixture.hits[path] += 1
+            if path in fixture.gates:
+                entered, release = fixture.gates[path]
+                entered.set()
+                if not release.wait(10):
+                    self.send_error(504)
+                    return
             failures = fixture.errors.get(path)
             if failures:
                 status, content = failures.pop(0), b""

@@ -1,6 +1,7 @@
 //! CLI entry point for jma-nowcast-rs.
 
 mod api;
+mod api_policy;
 mod mcp;
 
 use chrono::{DateTime, Utc};
@@ -111,6 +112,10 @@ async fn main() {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let production = std::env::var_os("JMA_PRODUCTION").is_some();
+    if production && std::env::var_os("JMA_FIXED_NOW").is_some() {
+        return Err("JMA_FIXED_NOW is forbidden in production".into());
+    }
 
     let base_url =
         std::env::var("JMA_BASE_URL").unwrap_or_else(|_| DEFAULT_JMA_BASE_URL.to_string());
@@ -256,7 +261,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", serde_json::to_string_pretty(&res)?);
         }
         Commands::Serve(args) => {
-            let router = api::app(nowcast, http_client, short_range_base_url);
+            let policy = api_policy::ApiPolicy::from_env(production)?;
+            let router = api::app(nowcast, http_client, short_range_base_url, policy);
             let addr: SocketAddr = args.bind.parse()?;
             println!("Listening on http://{}", addr);
             let listener = tokio::net::TcpListener::bind(addr).await?;

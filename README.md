@@ -86,10 +86,10 @@ jma-nowcast-rs mcp
 ## REST API
 
 The server binds to `127.0.0.1:8080` by default, so it is not exposed publicly
-unless you deliberately change `--bind`. Every endpoint is `POST` and accepts a
-JSON request body. Invalid request bodies and handler errors are returned as
-JSON with `code` and `error` fields; invalid input is HTTP 400 and upstream
-failures are HTTP 502.
+unless you deliberately change `--bind`. Weather endpoints use `POST` with a
+JSON request body. `GET /health` returns `{"status":"ok"}` without calling
+JMA. Errors return JSON with `code` and `error` fields. Invalid input is HTTP
+400, and upstream failures are HTTP 502.
 
 - `POST /v1/precipitation` — `{ "lat": 35.68, "lon": 139.76, "zoom": 10 }`
 - `POST /v1/nowcast` — `{ "lat": 35.68, "lon": 139.76, "zoom": 10 }`
@@ -149,8 +149,19 @@ Example client configuration:
   short-range tiles. Default: `https://www.jma.go.jp/bosai/jmatile/data/rasrf`.
 - `JMA_FIXED_NOW`: RFC 3339 timestamp (for example
   `2026-11-24T07:00:00Z`) used as the clock for every query. This is intended for
-  deterministic tests; leave it unset in production so the current UTC time is
-  used.
+  deterministic tests. Setting it in production prevents startup.
+- `JMA_PRODUCTION`: when present, REST requires `JMA_API_KEY` and enables the
+  production defaults for both limits. The Docker and Compose configuration
+  sets this variable.
+- `JMA_API_KEY`: REST bearer token (nonempty printable ASCII without spaces).
+  When configured, send it in the `Authorization: Bearer …` header.
+- `JMA_RATE_LIMIT_PER_MINUTE`: process-wide REST request limit per fixed
+  60-second window (production default 60).
+- `JMA_MAX_CONCURRENT_REQUESTS`: process-wide REST in-flight request limit
+  (production default 4).
+
+The REST controls are opt-in for local runs. Both limits return HTTP 429 with
+`Retry-After`. The health endpoint is exempt from authentication and limits.
 
 Both base URLs can point at a loopback test server. They must include the
 product directory that contains `targetTimes_N1.json` / `targetTimes_N2.json`
@@ -158,32 +169,8 @@ product directory that contains `targetTimes_N1.json` / `targetTimes_N2.json`
 
 ## Running on a VPS
 
-Keep the REST server on the VPS loopback interface and reach it through an SSH
-tunnel or a reverse proxy on the same host. Binding to `127.0.0.1` avoids
-exposing an unauthenticated service to the internet.
-
-```bash
-# On the VPS, from the repository checkout
-cargo build --release
-./target/release/jma-nowcast-rs serve --bind 127.0.0.1:8080
-
-# Optional: run it as a background service
-nohup ./target/release/jma-nowcast-rs serve --bind 127.0.0.1:8080 \
-  >/tmp/jma-nowcast.log 2>&1 &
-
-# From your workstation, forward the loopback port
-ssh -N -L 8080:127.0.0.1:8080 user@vps.example.com
-
-# Then call the API locally
-curl -sS http://127.0.0.1:8080/v1/short-range \
-  -H 'Content-Type: application/json' \
-  -d '{"lat":35.6812,"lon":139.7671}'
-```
-
-If a reverse proxy is required, terminate TLS at the proxy and forward only to
-`127.0.0.1:8080`; do not publish port 8080 on a public interface. The CLI and
-MCP server do not listen on a network socket and can be run directly on the VPS
-or locally.
+See the [Contabo deployment guide](deploy/README.md) for Docker Compose and
+Caddy HTTPS setup for `weather.hisho.uk`.
 
 ## Attribution & License
 

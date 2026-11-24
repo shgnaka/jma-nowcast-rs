@@ -3,14 +3,17 @@
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, Request, State},
     http::StatusCode,
+    middleware,
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
+
+use crate::api_policy::{self, ApiPolicy};
 
 use jma_nowcast_rs::query::{Nowcast, NowcastError, Waypoint};
 use jma_nowcast_rs::short_range::{get_short_range, ShortRange, ShortRangeError};
@@ -125,7 +128,12 @@ impl From<ShortRangeError> for ApiError {
     }
 }
 
-pub fn app(nowcast: Arc<Nowcast>, http_client: Client, short_range_base_url: String) -> Router {
+pub fn app(
+    nowcast: Arc<Nowcast>,
+    http_client: Client,
+    short_range_base_url: String,
+    policy: Arc<ApiPolicy>,
+) -> Router {
     Router::new()
         .route("/v1/precipitation", post(precipitation_handler))
         .route("/v1/nowcast", post(nowcast_handler))
@@ -134,6 +142,8 @@ pub fn app(nowcast: Arc<Nowcast>, http_client: Client, short_range_base_url: Str
         .route("/v1/route-nowcast", post(route_nowcast_handler))
         .route("/v1/rain-free-windows", post(rain_free_windows_handler))
         .route("/v1/short-range", post(short_range_handler))
+        .route_layer(middleware::from_fn_with_state(policy, api_policy::admit))
+        .route("/health", get(|| async { Json(json!({"status": "ok"})) }))
         .fallback(not_found_handler)
         .with_state(AppState {
             nowcast,

@@ -1,0 +1,23 @@
+services:
+  nowcast:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      JMA_PRODUCTION: "1"
+      JMA_API_KEY: ${JMA_API_KEY:?Set JMA_API_KEY in .env}
+      JMA_RATE_LIMIT_PER_MINUTE: ${JMA_RATE_LIMIT_PER_MINUTE:-60}
+      JMA_MAX_CONCURRENT_REQUESTS: ${JMA_MAX_CONCURRENT_REQUESTS:-4}
+    ports:
+      - "127.0.0.1:8082:8082"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "--max-time", "2", "http://127.0.0.1:8082/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

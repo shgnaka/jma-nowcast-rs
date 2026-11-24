@@ -10,3 +10,8 @@
 # Python acceptance test caches
 __pycache__/
 *.py[cod]
+
+# Local deployment configuration
+.env
+.env.*
+!.env.example

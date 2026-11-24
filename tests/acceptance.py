@@ -10,10 +10,12 @@ import socket
 import subprocess
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import timedelta
 from http.client import HTTPConnection
 from pathlib import Path
+from threading import Event
 
 from mock_jma import (
     BASE,
@@ -59,13 +61,13 @@ def center(u, v):
 
 
 @contextmanager
-def rest_server(fixture):
+def rest_server(fixture, **settings):
     with socket.socket() as reserved:
         reserved.bind(("127.0.0.1", 0))
         port = reserved.getsockname()[1]
     process = subprocess.Popen(
         [BINARY, "serve", "--bind", f"127.0.0.1:{port}"],
-        env=environment(fixture),
+        env=dict(environment(fixture), **settings),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
@@ -94,12 +96,13 @@ def rest_server(fixture):
             process.communicate()
 
 
-def post(port, route, body):
+def post(port, route, body, token=None):
     connection = HTTPConnection("127.0.0.1", port, timeout=15)
     try:
-        connection.request(
-            "POST", f"/v1/{route}", json.dumps(body), {"Content-Type": "application/json"}
-        )
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        connection.request("POST", f"/v1/{route}", json.dumps(body), headers)
         response = connection.getresponse()
         return response.status, json.load(response)
     finally:
@@ -107,6 +110,60 @@ def post(port, route, body):
 
 
 class Acceptance(unittest.TestCase):
+    def test_rest_auth_rate_and_health(self):
+        with mock_jma() as fixture, rest_server(
+            fixture, JMA_API_KEY="test-key", JMA_RATE_LIMIT_PER_MINUTE="1"
+        ) as port:
+            point = {"lat": 35, "lon": 135}
+            self.assertEqual(post(port, "precipitation", point)[0], 401)
+            self.assertEqual(post(port, "precipitation", point, "wrong")[0], 401)
+            self.assertFalse(fixture.hits)
+            self.assertEqual(post(port, "precipitation", point, "test-key")[0], 200)
+            status, body = post(port, "precipitation", point, "test-key")
+            self.assertEqual((status, body["code"]), (429, "rate_limit"))
+
+            connection = HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                connection.request("GET", "/health")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.load(response), {"status": "ok"})
+            finally:
+                connection.close()
+
+    def test_rest_concurrency_rejects_and_releases(self):
+        entered, release = Event(), Event()
+        point = {"lat": 35, "lon": 135}
+        with mock_jma() as fixture, rest_server(
+            fixture, JMA_MAX_CONCURRENT_REQUESTS="1"
+        ) as port, ThreadPoolExecutor(max_workers=1) as pool:
+            fixture.gates["/targetTimes_N1.json"] = (entered, release)
+            pending = pool.submit(post, port, "precipitation", point)
+            try:
+                self.assertTrue(entered.wait(5), "first request did not reach fixture")
+                status, body = post(port, "precipitation", point)
+                self.assertEqual((status, body["code"]), (429, "concurrency_limit"))
+            finally:
+                release.set()
+            self.assertEqual(pending.result()[0], 200)
+            self.assertEqual(post(port, "precipitation", point)[0], 200)
+
+    def test_production_rejects_fixed_clock_and_missing_key(self):
+        env = dict(os.environ, JMA_PRODUCTION="1", JMA_FIXED_NOW=FIXED_NOW)
+        env.pop("JMA_API_KEY", None)
+        for forbidden_clock, expected in [
+            (True, "JMA_FIXED_NOW is forbidden"),
+            (False, "JMA_API_KEY is required"),
+        ]:
+            if not forbidden_clock:
+                env.pop("JMA_FIXED_NOW")
+            result = subprocess.run(
+                [BINARY, "serve", "--bind", "127.0.0.1:0"],
+                env=env, capture_output=True, text=True, timeout=5,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(expected, result.stderr)
+
     def cli(self, fixture, command, *args, point=("35", "135")):
         result = run(fixture, command, f"--lat={point[0]}", f"--lon={point[1]}", *args)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
