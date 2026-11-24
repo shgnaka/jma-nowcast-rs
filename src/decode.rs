@@ -39,6 +39,8 @@ pub enum DecodeError {
     UnsupportedBitDepth(ColorType, BitDepth),
     /// An indexed image has no palette.
     MissingPalette,
+    /// An indexed image has an invalid palette.
+    InvalidPalette,
     /// An indexed image uses an index outside its palette.
     PaletteIndexOutOfRange(u8),
     /// A palette entry that is actually used has an unknown colour.
@@ -64,6 +66,7 @@ impl fmt::Display for DecodeError {
                 "unsupported bit depth {bit_depth:?} for PNG colour type {color_type:?}"
             ),
             Self::MissingPalette => write!(f, "indexed PNG tile has no palette"),
+            Self::InvalidPalette => write!(f, "indexed PNG tile has an invalid palette"),
             Self::PaletteIndexOutOfRange(index) => {
                 write!(f, "tile uses palette index {index} outside its palette")
             }
@@ -124,6 +127,12 @@ pub fn decode_tile(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
     let mut buffer = vec![0_u8; reader.output_buffer_size()];
     let frame = reader.next_frame(&mut buffer)?;
     let buffer = &buffer[..frame.buffer_size()];
+    if frame.width != width || frame.height != height {
+        return Err(DecodeError::InvalidSize {
+            width: frame.width,
+            height: frame.height,
+        });
+    }
 
     match color_type {
         ColorType::Indexed => decode_indexed(buffer, frame.line_size, bit_depth, palette),
@@ -154,9 +163,12 @@ fn decode_indexed(
     };
 
     let palette = palette.ok_or(DecodeError::MissingPalette)?;
+    if palette.len() % 3 != 0 {
+        return Err(DecodeError::InvalidPalette);
+    }
     let entries = palette.len() / 3;
-    if entries == 0 {
-        return Err(DecodeError::MissingPalette);
+    if entries == 0 || entries > (1 << bits) {
+        return Err(DecodeError::InvalidPalette);
     }
 
     let side = TILE_SIZE as usize;

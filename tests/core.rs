@@ -41,8 +41,14 @@ fn xyz_rejects_invalid_coordinates_and_zoom_and_keeps_world_edges() {
 }
 
 #[test]
-fn jma_histogram_matches_python_reference() {
+fn every_jma_pixel_matches_python_reference() {
     let levels = decode_tile(include_bytes!("fixtures/20260916010500_z6_x56_y25.png")).unwrap();
+    let expected = include_bytes!("fixtures/20260916010500_z6_x56_y25.levels");
+    assert_eq!(
+        levels.as_slice(),
+        expected,
+        "decoded pixel order or values changed"
+    );
     let mut histogram = [0; 10];
     for level in levels {
         histogram[usize::from(level)] += 1;
@@ -162,4 +168,22 @@ fn rgb_and_rgba_decode_known_colors_and_reject_unknown_opaque_colors() {
 fn png_truncated_after_pixels_is_rejected() {
     let png = packed_tile(256, 0x01);
     assert!(decode_tile(&png[..png.len() - 12]).is_err(), "missing IEND");
+}
+
+#[test]
+fn indexed_palette_cannot_exceed_bit_depth_capacity() {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 256, 256);
+        encoder.set_color(png::ColorType::Indexed);
+        encoder.set_depth(png::BitDepth::Four);
+        // Four bits can address exactly 16 entries, even when the last entry is unused.
+        encoder.set_palette([255, 255, 255].repeat(17));
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&vec![0; 128 * 256])
+            .unwrap();
+    }
+    assert!(decode_tile(&bytes).is_err());
 }
